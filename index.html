@@ -1,0 +1,710 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0, minimum-scale=1.0">
+    <title>Protocalc</title>
+    <style>
+        * { 
+            box-sizing: border-box; 
+            margin: 0; 
+            padding: 0; 
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: manipulation;
+        }
+        body {
+            background-color: #121212;
+            color: #ffffff;
+            font-family: system-ui, -apple-system, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            padding: 10px;
+            overflow: hidden;
+        }
+        .calc-container {
+            width: 100%;
+            max-width: 420px;
+            background: linear-gradient(135deg, #e5e7eb 0%, #d1d5db 50%, #9ca3af 100%);
+            border-radius: 24px;
+            padding: 16px;
+            box-shadow: 0 16px 45px rgba(0,0,0,0.8), inset 0 2px 4px rgba(255,255,255,0.6);
+            border: 2px solid #babcbf;
+        }
+        .lcd-screen {
+            position: relative;
+            background: #152919;
+            color: #4afc62;
+            padding: 16px;
+            border-radius: 16px;
+            text-align: right;
+            font-family: monospace;
+            min-height: 120px;
+            margin-bottom: 16px;
+            box-shadow: inset 0 5px 12px rgba(0,0,0,0.8);
+            border: 2px solid #0f1c11;
+            overflow: hidden;
+        }
+        
+        .mask-wrapper {
+            width: 100%;
+            transition: none;
+        }
+        
+        .tape-view { 
+            font-size: 14px; 
+            color: #3b7a46; 
+            min-height: 20px; 
+            font-weight: bold; 
+            overflow: hidden; 
+            white-space: nowrap; 
+            text-align: left;
+            direction: ltr;
+        }
+        .main-readout { font-size: 34px; font-weight: bold; margin: 8px 0; min-height: 40px; word-wrap: break-word; }
+        .conversions {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            border-top: 1px solid #1f3823;
+            padding-top: 6px;
+            font-weight: bold;
+            color: #3fce54;
+        }
+
+        /* CUSTOM MAROON FLASHING ERROR OVERLAY */
+        .error-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #4c0519;
+            color: #ef4444;
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Courier New', Courier, monospace;
+            font-weight: 900;
+            font-size: 26px;
+            letter-spacing: 1px;
+            z-index: 50;
+            text-shadow: 0 0 8px rgba(239, 68, 68, 0.7);
+            /* Pixelated entry emulation */
+            image-rendering: pixelated;
+            backdrop-filter: contrast(180%) brightness(80%);
+        }
+        .error-overlay.active {
+            display: flex;
+            animation: error-flash 0.3s ease-in-out infinite alternate;
+        }
+        @keyframes error-flash {
+            0% { opacity: 0.9; filter: saturate(1.2); }
+            100% { opacity: 1.0; filter: saturate(2.0); }
+        }
+
+        /* LCD NATIVE PAC-MAN ANIMATION STYLES */
+        .pacman-wipe-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            display: none;
+            z-index: 10;
+        }
+        .pacman-character {
+            position: absolute;
+            top: 30%;
+            right: -60px;
+            width: 50px;
+            height: 50px;
+            background: #4afc62;
+            border-radius: 50%;
+            clip-path: polygon(0% 74%, 50% 50%, 0% 26%, 0% 0%, 100% 0%, 100% 100%, 0% 100%);
+            box-shadow: 0 0 8px rgba(74, 252, 98, 0.4);
+        }
+        .pacman-character.eating {
+            animation: 
+                pacman-move 1.4s linear forwards, 
+                pacman-chomp 0.14s ease-in-out infinite alternate;
+        }
+        @keyframes pacman-move {
+            0% { right: -60px; }
+            100% { right: 110%; }
+        }
+        @keyframes pacman-chomp {
+            0% { clip-path: polygon(0% 74%, 50% 50%, 0% 26%, 0% 0%, 100% 0%, 100% 100%, 0% 100%); }
+            100% { clip-path: polygon(0% 50%, 50% 50%, 0% 50%, 0% 0%, 100% 0%, 100% 100%, 0% 100%); }
+        }
+
+        /* BUTTON LAYOUT CONFIGURATIONS */
+        .button-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
+        }
+        button {
+            background: #212121;
+            color: #ffffff;
+            border: 1px solid #141414;
+            border-radius: 16px;
+            font-size: 18px;
+            font-weight: bold;
+            padding: 18px 0;
+            cursor: pointer;
+            outline: none;
+            touch-action: none;
+            -webkit-tap-highlight-color: transparent;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3), inset 0 1px 1px rgba(255,255,255,0.1);
+        }
+        button.active-tap { 
+            background: #363636 !important; 
+            box-shadow: 0 1px 2px rgba(0,0,0,0.5), inset 0 1px 3px rgba(0,0,0,0.4);
+            transform: translateY(1px);
+        }
+        button.clear-btn { background: #991b1b; color: #fff; border-color: #7f1d1d; }
+        button.clear-btn.active-tap { background: #7f1d1d !important; }
+        
+        button.amber-btn { background: #d97706; color: #fff; border-color: #b45309; }
+        button.amber-btn.active-tap { background: #b45309 !important; }
+        
+        button.equal-btn { background: #14532d; color: #fff; border-color: #166534; grid-row: span 2; height: 100%; }
+        button.equal-btn.active-tap { background: #166534 !important; }
+        
+        button.conv-btn { background: #2e3f56; border-color: #1e2936; color: #38bdf8; }
+        button.conv-btn.active-tap { background: #1e2936 !important; }
+    </style>
+</head>
+<body>
+
+<div class="calc-container">
+    <div class="lcd-screen">
+        <!-- Error Layer Screen Overlay Container -->
+        <div class="error-overlay" id="error-screen">YA VALISTE VERGA</div>
+
+        <div class="pacman-wipe-container" id="pacman-container">
+            <div class="pacman-character" id="pacman"></div>
+        </div>
+
+        <div id="tape-mask" class="mask-wrapper"><div class="tape-view" id="tape"></div></div>
+        <div id="display-mask" class="mask-wrapper"><div class="main-readout" id="display">0</div></div>
+        <div id="conv-mask" class="mask-wrapper">
+            <div class="conversions">
+                <span id="c-ft">0.0000 ft</span>
+                <span id="c-in">0.00 in</span>
+                <span id="c-mm">0 mm</span>
+            </div>
+        </div>
+    </div>
+  <div class="trig-grid" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 12px;">
+    <button style="padding: 9px 0; font-size: 14px;" data-key="PI">π</button>
+    <button style="padding: 9px 0; font-size: 14px;" data-key="RISE">RISE</button>
+    <button style="padding: 9px 0; font-size: 14px;" data-key="RUN">RUN</button>
+    <button style="padding: 9px 0; font-size: 14px;" data-key="OFFS">OFFS</button>
+</div>
+    <div class="button-grid">
+        <button class="clear-btn" data-key="AC">AC</button>
+        <button class="amber-btn" data-key="C">C</button>
+        <button class="conv-btn" data-key="CONV">CONV</button>
+        <button class="op-btn" data-key="÷">÷</button>
+        
+        <button class="unit-btn" data-key="FT">FEET</button>
+        <button class="unit-btn" data-key="IN">INCH</button>
+        <button class="unit-btn" data-key="/">/</button>
+        <button class="op-btn" data-key="×">×</button>
+        
+        <button data-key="7">7</button>
+        <button data-key="8">8</button>
+        <button data-key="9">9</button>
+        <button class="op-btn" data-key="-">-</button>
+        
+        <button data-key="4">4</button>
+        <button data-key="5">5</button>
+        <button data-key="6">6</button>
+        <button class="op-btn" data-key="+">+</button>
+        
+        <button data-key="1">1</button>
+        <button data-key="2">2</button>
+        <button data-key="3">3</button>
+        <button class="equal-btn" style="grid-row: span 2;" data-key="=">=</button>
+        
+        <button style="grid-column: span 2;" data-key="0">0</button>
+        <button data-key=".">.</button>
+    </div>
+</div>
+
+<script>
+    // State Tracking
+    let runningVal = 0;          
+    let runningIsDim = false;    
+    let activeOperator = null; 
+    let tapeHistory = "";
+    let isConversionActive = false; 
+  
+  // Trig variables
+    let triRise = 0, triRun = 0, triOffset = 0;
+
+    // Input Register states
+    let hasFeet = false;    let feetVal = 0;
+    let hasInches = false;  let inchesVal = 0;
+    let hasFraction = false; let numeratorVal = 0; let denominatorVal = 1;
+
+    let digitBuffer = ""; 
+    let fractionState = "NONE"; 
+    let hasCalculatedResult = false;
+    let freshValueStarted = false;
+    let isAnimating = false;
+    let isErrorState = false;
+
+    function hasActiveDimensions() {
+        return hasFeet || hasInches || hasFraction;
+    }
+
+    function triggerCrashSequence() {
+        if (isErrorState) return;
+        isErrorState = true;
+        
+        const errScreen = document.getElementById("error-screen");
+        errScreen.classList.add("active");
+
+        // Force sequence tracking duration constraint window to exactly 1.2 seconds
+        setTimeout(() => {
+            errScreen.classList.remove("active");
+            
+            // Hard programmatic clean reset execution sequence
+            document.getElementById("display").innerText = "0";
+            document.getElementById("tape").innerText = "";
+            document.getElementById("c-ft").innerText = "0.0000 ft";
+            document.getElementById("c-in").innerText = "0.00 in";
+            document.getElementById("c-mm").innerText = "0 mm";
+
+            runningVal = 0; runningIsDim = false; activeOperator = null; tapeHistory = "";
+            clearInputRegisters(); hasCalculatedResult = false; freshValueStarted = false;
+            isErrorState = false;
+        }, 1200);
+    }
+
+    function updateHardwareDisplay(mainText, tapeText) {
+        if (isAnimating || isErrorState) return; 
+        document.getElementById("display").innerText = mainText || "0";
+        document.getElementById("tape").innerText = tapeText;
+        
+        let showConversions = false;
+        let targetInches = 0;
+
+        if (hasCalculatedResult && !freshValueStarted) {
+            if (runningIsDim) { showConversions = true; targetInches = runningVal; }
+        } else if (hasActiveDimensions()) {
+            showConversions = true;
+            targetInches = getLiveBufferInches();
+        }
+
+        if (showConversions) {
+            let absVal = Math.abs(targetInches);
+            let sign = targetInches < 0 ? "-" : "";
+            document.getElementById("c-ft").innerText = sign + (absVal / 12).toFixed(4) + " ft";
+            document.getElementById("c-in").innerText = sign + absVal.toFixed(2) + " in";
+            document.getElementById("c-mm").innerText = sign + Math.round(absVal * 25.4) + " mm";
+        } else {
+            document.getElementById("c-ft").innerText = "0.0000 ft";
+            document.getElementById("c-in").innerText = "0.00 in";
+            document.getElementById("c-mm").innerText = "0 mm";
+        }
+    }
+
+    function getLiveBufferInches() {
+        let total = 0;
+        if (hasFeet) total += feetVal * 12;
+        if (hasInches) total += inchesVal;
+        
+        if (digitBuffer !== "") {
+            let val = parseFloat(digitBuffer) || 0;
+            if (fractionState === "NONE") total += val;
+            else if (fractionState === "NUMERATOR") total += val / denominatorVal;
+            else if (fractionState === "DENOMINATOR") total += numeratorVal / (val || 1);
+        } else if (fractionState !== "NONE" && hasFraction) {
+            total += numeratorVal / denominatorVal;
+        }
+        return total;
+    }
+
+    function formatCurrentWorkingState() {
+        if (hasCalculatedResult && !freshValueStarted) {
+            return runningIsDim ? formatFromInches(runningVal) : runningVal.toString();
+        }
+
+        let str = "";
+        if (hasFeet) str += feetVal + "'";
+        if (hasInches) { if (hasFeet) str += " "; str += inchesVal; }
+
+        if (fractionState === "NONE") {
+            if (digitBuffer !== "") { if (str !== "") str += " "; str += digitBuffer; }
+        } else if (fractionState === "NUMERATOR") {
+            if (hasFeet && !hasInches) str += " ";
+            str += (digitBuffer !== "") ? ((hasInches ? "-" : "") + digitBuffer + "/") : ((hasInches ? "-" : "") + "/");
+        } else if (fractionState === "DENOMINATOR") {
+            if (hasFeet && !hasInches) str += " ";
+            str += (hasInches ? "-" : "") + numeratorVal + "/" + digitBuffer;
+        }
+
+        if ((hasInches && fractionState === "NONE") || (fractionState === "DENOMINATOR" && digitBuffer !== "")) {
+            str += '"';
+        }
+        return str || "0";
+    }
+
+    function formatFromInches(totalInches) {
+        if (totalInches === 0) return '0"';
+        let isNeg = totalInches < 0;
+        let val = Math.abs(totalInches);
+        
+        let f = Math.floor(val / 12);
+        let remInches = val % 12;
+        let i = Math.floor(remInches);
+        let fracDecimal = remInches - i;
+        
+        let sixteenths = Math.round(fracDecimal * 16);
+        let num = 0; let den = 16;
+        
+        if (sixteenths === 16) {
+            i += 1; if (i === 12) { f += 1; i = 0; }
+        } else if (sixteenths > 0) {
+            num = sixteenths;
+            if (num % 8 === 0) { num /= 8; den = 2; }
+            else if (num % 4 === 0) { num /= 4; den = 4; }
+            else if (num % 2 === 0) { num /= 2; den = 8; }
+        }
+        
+        let str = "";
+        if (f > 0) str += f + "'";
+        if (i > 0 || num > 0 || f === 0) {
+            if (f > 0) str += " ";
+            str += i;
+            if (num > 0) str += "-" + num + "/" + den;
+            str += '"';
+        }
+        return (isNeg ? "-" : "") + str;
+    }
+
+    function executePendingMath(incomingVal, incomingIsDim) {
+        if (activeOperator === null) return { val: incomingVal, isDim: incomingIsDim, err: false };
+
+        let v1 = runningVal;
+        let v2 = incomingVal;
+        let d1 = runningIsDim;
+        let d2 = incomingIsDim;
+
+        let resVal = 0;
+        let resDim = false;
+
+        switch(activeOperator) {
+            case '+':
+                // ILLEGAL OPERATION DETECTED: Trying to append/add standard scalar to a dimension profile mismatch
+                if ((d1 && !d2 && digitBuffer !== "") || (!d1 && d2)) {
+                    return { val: 0, isDim: false, err: true };
+                }
+                if (d1 && d2) { resVal = v1 + v2; resDim = true; }
+                else if (!d1 && !d2) { resVal = v1 + v2; resDim = false; }
+                else { resVal = d1 ? v1 + v2 : v2 + v1; resDim = true; } 
+                break;
+            case '-':
+                // ILLEGAL OPERATION DETECTED: Dimension profiling mismatch mismatch logic check
+                if ((d1 && !d2 && digitBuffer !== "") || (!d1 && d2)) {
+                    return { val: 0, isDim: false, err: true };
+                }
+                if (d1 && d2) { resVal = v1 - v2; resDim = true; }
+                else if (!d1 && !d2) { resVal = v1 - v2; resDim = false; }
+                else if (d1 && !d2) { resVal = v1 - v2; resDim = true; }  
+                else { resVal = v1 - v2; resDim = false; }
+                break;
+            case '×':
+                if (d1 && d2) return { val: 0, isDim: false, err: true }; // Can't multiply dimension by dimension directly
+                if (d1 && !d2) { resVal = v1 * v2; resDim = true; }       
+                else if (!d1 && d2) { resVal = v1 * v2; resDim = true; }  
+                else { resVal = v1 * v2; resDim = false; }                
+                break;
+            case '÷':
+                if (d1 && !d2) { resVal = v1 / (v2 || 1); resDim = true; } 
+                else if (d1 && d2) { resVal = v1 / (v2 || 1); resDim = false; } 
+                else { resVal = v1 / (v2 || 1); resDim = false; }
+                break;
+        }
+        return { val: resVal, isDim: resDim, err: false };
+    }
+
+    function clearInputRegisters() {
+        hasFeet = false; feetVal = 0;
+        hasInches = false; inchesVal = 0;
+        hasFraction = false; numeratorVal = 0; denominatorVal = 1;
+        digitBuffer = ""; fractionState = "NONE";
+        isConversionActive = false;
+    }
+
+    function triggerPacmanWipe() {
+        if (isAnimating || isErrorState) return;
+        isAnimating = true;
+
+        const container = document.getElementById("pacman-container");
+        const pacman = document.getElementById("pacman");
+        const tapeM = document.getElementById("tape-mask");
+        const dispM = document.getElementById("display-mask");
+        const convM = document.getElementById("conv-mask");
+
+        container.style.display = "block";
+        pacman.classList.add("eating");
+
+        let startTime = Date.now();
+        let eatInterval = setInterval(() => {
+            let elapsed = Date.now() - startTime;
+            let progress = elapsed / 1400; 
+
+            if (progress >= 1) { clearInterval(eatInterval); return; }
+
+            let edge = 100 - ((progress - 0.10) / 0.80) * 100;
+            edge = Math.min(Math.max(edge, 0), 100);
+
+            let maskString = `linear-gradient(to right, currentColor ${edge}%, transparent ${edge}%)`;
+            tapeM.style.webkitMaskImage = maskString; tapeM.style.maskImage = maskString;
+            dispM.style.webkitMaskImage = maskString; dispM.style.maskImage = maskString;
+            convM.style.webkitMaskImage = maskString; convM.style.maskImage = maskString;
+        }, 16);
+
+        setTimeout(() => {
+            clearInterval(eatInterval);
+            pacman.classList.remove("eating");
+            container.style.display = "none";
+            isAnimating = false;
+            
+            tapeM.style.maskImage = "none"; tapeM.style.webkitMaskImage = "none";
+            dispM.style.maskImage = "none"; dispM.style.webkitMaskImage = "none";
+            convM.style.maskImage = "none"; convM.style.webkitMaskImage = "none";
+            
+            document.getElementById("display").innerText = "0";
+            document.getElementById("tape").innerText = "";
+            document.getElementById("c-ft").innerText = "0.0000 ft";
+            document.getElementById("c-in").innerText = "0.00 in";
+            document.getElementById("c-mm").innerText = "0 mm";
+
+            runningVal = 0; runningIsDim = false; activeOperator = null; tapeHistory = "";
+            clearInputRegisters(); hasCalculatedResult = false; freshValueStarted = false;
+        }, 1400); 
+    }
+
+   
+  function handleInput(key) {
+        // Trig Input Handling
+    if (key === 'PI') { digitBuffer = Math.PI.toFixed(4); updateHardwareDisplay(digitBuffer, "PI"); return; }
+    if (key === 'RISE') { triRise = getLiveBufferInches(); clearInputRegisters(); updateHardwareDisplay("RISE SET", "R=" + triRise.toFixed(2)); return; }
+    if (key === 'RUN') { triRun = getLiveBufferInches(); clearInputRegisters(); updateHardwareDisplay("RUN SET", "RUN=" + triRun.toFixed(2)); return; }
+    if (key === 'OFFS') { triOffset = getLiveBufferInches(); clearInputRegisters(); updateHardwareDisplay("OFFS SET", "O=" + triOffset.toFixed(2)); return; }
+    
+    if (key === '=') {
+        if (triRise > 0 && triRun > 0 && triOffset === 0) { 
+            triOffset = Math.sqrt(triRise**2 + triRun**2); 
+            updateHardwareDisplay(formatFromInches(triOffset), "OFFS CALC"); return; 
+        }
+        else if (triOffset > 0 && triRise > 0 && triRun === 0) { 
+            triRun = Math.sqrt(triOffset**2 - triRise**2); 
+            updateHardwareDisplay(formatFromInches(triRun), "RUN CALC"); return; 
+        }
+        else if (triOffset > 0 && triRun > 0 && triRise === 0) { 
+            triRise = Math.sqrt(triOffset**2 - triRun**2); 
+            updateHardwareDisplay(formatFromInches(triRise), "RISE CALC"); return; 
+        }
+    }
+
+        if (isAnimating || isErrorState) return; 
+
+        if (key === 'AC') { triggerPacmanWipe(); return; }
+
+        if (key === 'C') {
+            if (fractionState === "DENOMINATOR") digitBuffer = "";
+            else if (fractionState === "NUMERATOR") { digitBuffer = ""; fractionState = "NONE"; }
+            else digitBuffer = "";
+            isConversionActive = false;
+            updateHardwareDisplay(formatCurrentWorkingState(), tapeHistory);
+            return;
+        }
+
+        if (key === 'CONV') {
+            isConversionActive = true;
+            let currentDisplay = formatCurrentWorkingState();
+            updateHardwareDisplay(currentDisplay, "CONV >");
+            return;
+        }
+
+        if (key === 'FT') {
+            if (isConversionActive) {
+                let baseValue = 0;
+                if (hasCalculatedResult && !freshValueStarted) {
+                    baseValue = runningVal; 
+                } else if (hasActiveDimensions()) {
+                    baseValue = getLiveBufferInches() / 12; 
+                } else {
+                    baseValue = parseFloat(digitBuffer) || 0; 
+                }
+
+                runningVal = baseValue * 12; 
+                runningIsDim = true;
+                isConversionActive = false;
+                clearInputRegisters();
+                hasCalculatedResult = true; 
+                freshValueStarted = false;
+
+                updateHardwareDisplay(formatFromInches(runningVal), "");
+                return;
+            }
+
+            if (digitBuffer !== "") { feetVal = parseInt(digitBuffer) || 0; hasFeet = true; digitBuffer = ""; }
+            updateHardwareDisplay(formatCurrentWorkingState(), tapeHistory);
+            return;
+        }
+
+        if (key === 'IN') {
+            if (isConversionActive) {
+                let baseValue = 0;
+                if (hasCalculatedResult && !freshValueStarted) {
+                    baseValue = runningVal; 
+                } else if (hasActiveDimensions()) {
+                    baseValue = getLiveBufferInches(); 
+                } else {
+                    baseValue = parseFloat(digitBuffer) || 0; 
+                }
+
+                runningVal = baseValue; 
+                runningIsDim = true;
+                isConversionActive = false;
+                clearInputRegisters();
+                hasCalculatedResult = true;
+                freshValueStarted = false;
+
+                updateHardwareDisplay(formatFromInches(runningVal), "");
+                return;
+            }
+
+            if (fractionState === "DENOMINATOR") {
+                denominatorVal = parseInt(digitBuffer) || 1; hasFraction = true; digitBuffer = ""; fractionState = "NONE";
+            } else if (digitBuffer !== "") {
+                inchesVal = parseInt(digitBuffer) || 0; hasInches = true; digitBuffer = "";
+            }
+            updateHardwareDisplay(formatCurrentWorkingState(), tapeHistory);
+            return;
+        }
+
+        if (key === '/') {
+            if (isConversionActive) return; 
+            if (fractionState === "NONE") {
+                if (hasFeet && digitBuffer !== "") { inchesVal = parseInt(digitBuffer) || 0; hasInches = true; numeratorVal = 0; }
+                else if (digitBuffer !== "") { numeratorVal = parseInt(digitBuffer) || 0; }
+                digitBuffer = ""; fractionState = "NUMERATOR";
+            } else if (fractionState === "NUMERATOR") {
+                numeratorVal = parseInt(digitBuffer) || numeratorVal; digitBuffer = ""; fractionState = "DENOMINATOR";
+            }
+            updateHardwareDisplay(formatCurrentWorkingState(), tapeHistory);
+            return;
+        }
+
+        if (['+', '-', '×', '÷'].includes(key)) {
+            isConversionActive = false; 
+            let incomingVal = 0;
+            let incomingIsDim = hasActiveDimensions();
+
+            if (incomingIsDim) {
+                incomingVal = getLiveBufferInches();
+            } else {
+                incomingVal = parseFloat(digitBuffer) || 0;
+            }
+
+            if (hasCalculatedResult && !freshValueStarted) {
+                tapeHistory = (runningIsDim ? formatFromInches(runningVal) : runningVal.toString()) + " " + key;
+            } else {
+                let out = executePendingMath(incomingVal, incomingIsDim);
+                if (out.err) { triggerCrashSequence(); return; }
+                
+                runningVal = out.val;
+                runningIsDim = out.isDim;
+
+                let formattedBlock = incomingIsDim ? formatFromInches(incomingVal) : incomingVal.toString();
+                if (tapeHistory === "") tapeHistory = formattedBlock + " " + key;
+                else tapeHistory += " " + formattedBlock + " " + key;
+            }
+            
+            activeOperator = key;
+            clearInputRegisters();
+            hasCalculatedResult = false;
+            freshValueStarted = false;
+
+            let displayOutput = runningIsDim ? formatFromInches(runningVal) : runningVal.toString();
+            updateHardwareDisplay(displayOutput, tapeHistory);
+            return;
+        }
+
+        if (key === '=') {
+            isConversionActive = false;
+            let incomingVal = 0;
+            let incomingIsDim = hasActiveDimensions();
+
+            if (incomingIsDim) {
+                incomingVal = getLiveBufferInches();
+            } else {
+                incomingVal = parseFloat(digitBuffer) || 0;
+            }
+
+            if (hasCalculatedResult && !freshValueStarted) {
+                // Keep state stable
+            } else {
+                let out = executePendingMath(incomingVal, incomingIsDim);
+                if (out.err) { triggerCrashSequence(); return; }
+                
+                runningVal = out.val;
+                runningIsDim = out.isDim;
+            }
+            
+            let finalOutput = runningIsDim ? formatFromInches(runningVal) : runningVal.toString();
+            updateHardwareDisplay(finalOutput, "");
+            
+            activeOperator = null; tapeHistory = "";
+            clearInputRegisters();
+            hasCalculatedResult = true;
+            freshValueStarted = false;
+            return;
+        }
+
+        if (hasCalculatedResult && !freshValueStarted) {
+            runningVal = 0; runningIsDim = false;
+            hasCalculatedResult = false;
+            clearInputRegisters();
+        }
+
+        if (hasCalculatedResult && freshValueStarted === false) freshValueStarted = true;
+
+        digitBuffer += key;
+        updateHardwareDisplay(formatCurrentWorkingState(), tapeHistory);
+    }
+
+    document.querySelectorAll('button').forEach(btn => {
+        const key = btn.getAttribute('data-key');
+        
+        btn.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            btn.classList.add('active-tap');
+            handleInput(key);
+        }, { passive: false });
+
+        btn.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            btn.classList.remove('active-tap');
+        }, { passive: false });
+        
+        btn.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+        }, { passive: false });
+    });
+</script>
+</body>
+</html>
